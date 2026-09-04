@@ -10,6 +10,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  *
@@ -40,19 +41,18 @@ public class HostBlackListsValidator {
         int servidoresSobrantes=totalServidores%n;
 
         BlackListSearchThread[] hilos=new BlackListSearchThread[n];
+        AtomicInteger contadorTotal=new AtomicInteger(0);
 
         int inicio=0;
         for (int i=0;i<n;i++){
             int tamañoSegmento=tamañoBase+(i<servidoresSobrantes?1:0);
             int fin=inicio+tamañoSegmento;
 
-            hilos[i]=new BlackListSearchThread(ipaddress, inicio, fin);
+            hilos[i]=new BlackListSearchThread(ipaddress, inicio, fin, contadorTotal, BLACK_LIST_ALARM_COUNT);
             hilos[i].start();
 
             inicio=fin;
         }
-
-        int ocurrencesCount=0;
 
         for (BlackListSearchThread hilo:hilos){
             try {
@@ -61,8 +61,9 @@ public class HostBlackListsValidator {
                 LOG.log(Level.SEVERE, null, ex);
             }
             blackListOcurrences.addAll(hilo.getOcurrencias());
-            ocurrencesCount+=hilo.getOcurrencias().size();
         }
+
+        int ocurrencesCount=contadorTotal.get();
 
         if (ocurrencesCount>=BLACK_LIST_ALARM_COUNT){
             skds.reportAsNotTrustworthy(ipaddress);
