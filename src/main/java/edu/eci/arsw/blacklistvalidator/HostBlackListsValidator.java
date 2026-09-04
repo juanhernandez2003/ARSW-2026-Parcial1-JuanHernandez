@@ -29,36 +29,50 @@ public class HostBlackListsValidator {
      * @param ipaddress suspicious host's IP address.
      * @return  Blacklists numbers where the given host's IP address was found.
      */
-    public List<Integer> checkHost(String ipaddress){
-        
+    public List<Integer> checkHost(String ipaddress, int n){
+
         LinkedList<Integer> blackListOcurrences=new LinkedList<>();
-        
-        int ocurrencesCount=0;
-        
+
         HostBlacklistsDataSourceFacade skds=HostBlacklistsDataSourceFacade.getInstance();
-        
-        int checkedListsCount=0;
-        
-        for (int i=0;i<skds.getRegisteredServersCount() && ocurrencesCount<BLACK_LIST_ALARM_COUNT;i++){
-            checkedListsCount++;
-            
-            if (skds.isInBlackListServer(i, ipaddress)){
-                
-                blackListOcurrences.add(i);
-                
-                ocurrencesCount++;
-            }
+
+        int totalServidores=skds.getRegisteredServersCount();
+        int tamañoBase=totalServidores/n;
+        int servidoresSobrantes=totalServidores%n;
+
+        BlackListSearchThread[] hilos=new BlackListSearchThread[n];
+
+        int inicio=0;
+        for (int i=0;i<n;i++){
+            int tamañoSegmento=tamañoBase+(i<servidoresSobrantes?1:0);
+            int fin=inicio+tamañoSegmento;
+
+            hilos[i]=new BlackListSearchThread(ipaddress, inicio, fin);
+            hilos[i].start();
+
+            inicio=fin;
         }
-        
+
+        int ocurrencesCount=0;
+
+        for (BlackListSearchThread hilo:hilos){
+            try {
+                hilo.join();
+            } catch (InterruptedException ex) {
+                LOG.log(Level.SEVERE, null, ex);
+            }
+            blackListOcurrences.addAll(hilo.getOcurrencias());
+            ocurrencesCount+=hilo.getOcurrencias().size();
+        }
+
         if (ocurrencesCount>=BLACK_LIST_ALARM_COUNT){
             skds.reportAsNotTrustworthy(ipaddress);
         }
         else{
             skds.reportAsTrustworthy(ipaddress);
-        }                
-        
-        LOG.log(Level.INFO, "Checked Black Lists:{0} of {1}", new Object[]{checkedListsCount, skds.getRegisteredServersCount()});
-        
+        }
+
+        LOG.log(Level.INFO, "Checked Black Lists:{0} of {1}", new Object[]{totalServidores, skds.getRegisteredServersCount()});
+
         return blackListOcurrences;
     }
     
